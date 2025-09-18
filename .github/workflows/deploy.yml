@@ -1,0 +1,73 @@
+name: Deploy Rick AI Expert
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  PRODUCTION: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Test Rick System
+      run: |
+        python -c "
+        from simple_rag import SimpleAnterixRAG
+        rag = SimpleAnterixRAG('./data/anterix_full_site.db')
+        stats = rag.get_stats()
+        print(f'✅ Knowledge chunks: {stats[\"total_chunks\"]}')
+        print(f'✅ Database: {stats[\"has_database\"]}')
+        print(f'✅ Vocabulary: {stats[\"vocabulary_size\"]}')
+        assert stats['total_chunks'] >= 90, 'Not enough knowledge chunks'
+        assert stats['has_database'], 'Database missing'
+        print('🎉 All tests passed!')
+        "
+
+    - name: Test Health Endpoint
+      run: |
+        python rick_with_rag.py &
+        sleep 10
+        curl -f http://localhost:8081/health || exit 1
+        echo "✅ Health check passed"
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build Docker Image
+      run: |
+        docker build -t rick-ai-expert .
+        echo "✅ Docker build successful"
+
+    - name: Test Docker Container
+      run: |
+        docker run -d -p 8081:8081 \
+          -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+          -e PRODUCTION="true" \
+          --name rick-test rick-ai-expert
+        sleep 15
+        curl -f http://localhost:8081/health || exit 1
+        docker logs rick-test
+        docker stop rick-test
+        echo "✅ Docker container test passed"
