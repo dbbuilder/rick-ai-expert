@@ -13,7 +13,7 @@ websockets>=11.0.0
 jinja2>=3.1.0
 
 # Database and storage
-sqlite3  # Built into Python
+# sqlite3 is built into Python, no need to install
 sqlalchemy>=2.0.0
 
 # Data processing
